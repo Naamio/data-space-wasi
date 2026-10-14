@@ -1,0 +1,59 @@
+// SPDX-FileCopyrightText: 2026 Omnifi Foundation
+// SPDX-License-Identifier: MPL-2.0
+
+/// Writing a document in one Resource Description Framework (RDF) syntax.
+///
+/// The host sends the statements to write, with every Internationalized Resource Identifier
+/// (IRI) absolute, together with the prefix and base declarations it has chosen for the
+/// document. The serialiser decides how to write each IRI, because whether a name can be
+/// shortened depends on the syntax: a local name that Turtle accepts may not be a valid XML
+/// name for RDF/XML. It also chooses the punctuation, escaping and layout.
+///
+/// This interface is unstable while the first serialisers are written against it.
+@unstable(feature = serializer)
+interface serializer {
+  @unstable(feature = serializer)
+  use syntax.{syntax-description};
+  @unstable(feature = serializer)
+  use terms.{statement};
+
+  /// The reason a serialiser could not write the statements it received.
+  @unstable(feature = serializer)
+  variant serialization-error {
+    /// A statement uses something the syntax cannot express, such as a named graph in
+    /// Turtle. The string describes it in English.
+    unsupported(string),
+    /// Any other failure, with a description in English when the serialiser has one.
+    other(option<string>),
+  }
+
+  /// Describes the syntax this serialiser writes.
+  @unstable(feature = serializer)
+  describe: func() -> syntax-description;
+
+  /// Writes the statements arriving on `statements` as a document, in the syntax's
+  /// encoding, on the returned stream.
+  ///
+  /// The host sends prefix and base declarations before any quad, and every IRI in a quad
+  /// is absolute. Quads usually arrive grouped by graph, then subject, then predicate,
+  /// which lets a syntax that abbreviates repeated subjects and predicates do so as they
+  /// arrive. The grouping helps the output but is not guaranteed: a serialiser must accept
+  /// quads in any order. The returned future resolves once the last statement has been
+  /// written, or with the first statement the serialiser cannot write.
+  ///
+  /// The function is asynchronous for the same reason as the parser's `parse`: the
+  /// serialiser returns its stream and future at once and writes the document afterwards.
+  @unstable(feature = serializer)
+  serialize: async func(
+    statements: stream<statement>,
+  ) -> tuple<stream<u8>, future<result<_, serialization-error>>>;
+}
+
+/// A component that writes one RDF syntax.
+///
+/// Like the parser's world, it imports no functions, only the type-only `syntax` and
+/// `terms` interfaces its export uses. The statements arrive as an argument.
+@unstable(feature = serializer)
+world serializer-component {
+  export serializer;
+}

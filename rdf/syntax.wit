@@ -1,0 +1,38 @@
+// SPDX-FileCopyrightText: 2026 Omnifi Foundation
+// SPDX-License-Identifier: MPL-2.0
+
+/// A component's description, for the host, of the syntax it reads or writes.
+///
+/// A host with several parsers and serialisers chooses between them by media type, for
+/// example when a Solid server answers a request according to its `Accept` header or stores
+/// a document according to its `Content-Type`. It also needs to know what the syntax can
+/// express before it hands a component data the syntax cannot hold.
+interface syntax {
+  /// The parts of the Resource Description Framework (RDF) data model that a syntax can
+  /// express beyond triples in a single graph.
+  flags syntax-features {
+    /// Named graphs, as in TriG and N-Quads.
+    datasets,
+    /// Triple terms, as in RDF 1.2 syntaxes.
+    triple-terms,
+    /// The base direction of literals, as in RDF 1.2 syntaxes.
+    base-direction,
+  }
+
+  /// A description of one RDF syntax.
+  record syntax-description {
+    /// The syntax's name, such as `Turtle`, for people to read.
+    name: string,
+    /// The version of the syntax's specification that the component follows, such as
+    /// `1.2`.
+    version: string,
+    /// The media types the syntax is registered under, such as `text/turtle`, with the
+    /// preferred one first.
+    media-types: list<string>,
+    /// The file extensions documents in the syntax usually have, without the dot, such as
+    /// `ttl`.
+    file-extensions: list<string>,
+    /// The parts of RDF the syntax can express beyond triples in one graph.
+    features: syntax-features,
+  }
+}

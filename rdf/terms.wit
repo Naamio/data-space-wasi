@@ -1,0 +1,199 @@
+// SPDX-FileCopyrightText: 2026 Omnifi Foundation
+// SPDX-License-Identifier: MPL-2.0
+
+package linked-data:rdf@0.0.0;
+
+/// Resource Description Framework (RDF) data as a document writes it.
+///
+/// A component that parses an RDF syntax reports what a document says, not what it means.
+/// It writes Internationalized Resource Identifiers (IRIs) as they appear, whether absolute,
+/// relative or prefixed, and refers to blank nodes by the labels the document gives them or
+/// by numbers it assigns itself. The host interprets these statements: it resolves IRIs,
+/// expands prefixes, gives every blank node its identity, checks every term, and stores the
+/// result.
+///
+/// RDF 1.2 Concepts and Abstract Syntax draws the same line. It describes prefixes, IRI
+/// references and blank node identifiers as features of concrete syntaxes, and states that
+/// blank node identifiers are not part of the abstract data model.
+///
+/// This version covers RDF 1.2, including triple terms and the base direction of literals,
+/// and datasets with named graphs.
+interface terms {
+  /// A prefixed name, such as `foaf:name`, before it is expanded.
+  record prefixed-name {
+    /// The prefix, without the colon. The empty string is the default prefix, as in
+    /// `:name`.
+    prefix: string,
+    /// The local part, with the syntax's escape sequences already decoded.
+    local: string,
+  }
+
+  /// A reference to an IRI, as a document writes it. Escape sequences are already decoded
+  /// in every form.
+  variant iri-reference {
+    /// An absolute IRI, which the host uses exactly as written. The host does not resolve
+    /// it or remove dot segments from it, so N-Triples IRIs and IRIs a component has
+    /// resolved itself pass through unchanged.
+    absolute(string),
+    /// A relative reference, which the host resolves against the base in effect where it
+    /// appears, following RFC 3986.
+    relative(string),
+    /// A prefixed name, which the host expands against the prefix declarations that
+    /// precede it.
+    prefixed(prefixed-name),
+  }
+
+  /// A blank node, as a document refers to it.
+  ///
+  /// Both forms are scoped to one document: the same label in two documents refers to two
+  /// different nodes. Within a document, a written label and a generated number never refer
+  /// to the same node.
+  variant blank-node {
+    /// A label the document writes, such as `b0` for Turtle's `_:b0`.
+    written(string),
+    /// A node the parser creates for syntax that names no label, such as Turtle's `[ ]`, a
+    /// collection, or a reifier. The parser numbers these itself and uses each number for
+    /// one node only.
+    generated(u64),
+  }
+
+  /// A node that can be the subject of a triple or the name of a graph: an IRI or a blank
+  /// node.
+  variant node {
+    /// An IRI.
+    iri(iri-reference),
+    /// A blank node.
+    blank-node(blank-node),
+  }
+
+  /// The base direction of the text in a literal, as RDF 1.2 defines it.
+  enum base-direction {
+    /// Left to right, written `ltr` in RDF 1.2 syntaxes.
+    ltr,
+    /// Right to left, written `rtl` in RDF 1.2 syntaxes.
+    rtl,
+  }
+
+  /// A language tag, as defined by BCP 47, with an optional base direction.
+  record language {
+    /// The language tag, such as `fi` or `en-GB`.
+    tag: string,
+    /// The base direction of the text. When present, the literal's datatype is
+    /// `rdf:dirLangString`; when absent, it is `rdf:langString`.
+    direction: option<base-direction>,
+  }
+
+  /// A literal's datatype or language: the part of a literal beyond its text. A literal
+  /// has a datatype or a language, never both, and this type allows only one.
+  variant annotation {
+    /// The datatype, such as `xsd:integer`.
+    datatype(iri-reference),
+    /// The language of the text, and optionally its base direction.
+    language(language),
+  }
+
+  /// A literal, as a document writes it.
+  record literal {
+    /// The lexical form, with the syntax's escape sequences already decoded.
+    lexical-form: string,
+    /// The datatype or the language. A literal with neither is an `xsd:string`.
+    annotation: option<annotation>,
+  }
+
+  /// A term in the object position of a triple.
+  variant term {
+    /// An IRI.
+    iri(iri-reference),
+    /// A blank node.
+    blank-node(blank-node),
+    /// A literal.
+    literal(literal),
+    /// A triple term, given as the position of its triple in the `triple-terms` list of
+    /// the quad that contains it, counting from zero.
+    triple-term(u32),
+  }
+
+  /// A triple that a triple term stands for.
+  ///
+  /// RDF 1.2 allows a triple term only in the object position, and WebAssembly Interface
+  /// Type (WIT) types cannot refer to themselves, so a triple term inside a triple term is
+  /// also given as a position in the containing quad's `triple-terms` list.
+  record triple {
+    /// The subject.
+    subject: node,
+    /// The predicate.
+    predicate: iri-reference,
+    /// The object.
+    object: term,
+  }
+
+  /// A triple in a dataset, together with the graph it belongs to.
+  record quad {
+    /// The subject.
+    subject: node,
+    /// The predicate.
+    predicate: iri-reference,
+    /// The object.
+    object: term,
+    /// The name of the graph the triple belongs to. When absent, the triple belongs to the
+    /// default graph.
+    graph-name: option<node>,
+    /// The triples of the triple terms that this quad uses. A `triple-term` in the quad's
+    /// object, or in an entry of this list, gives the position of an entry here. An entry
+    /// may refer only to entries before it, so the list holds no cycles. The list is empty
+    /// when the quad uses no triple terms.
+    triple-terms: list<triple>,
+  }
+
+  /// A prefix declaration, such as Turtle's `@prefix foaf: <http://xmlns.com/foaf/0.1/> .`
+  record prefix-declaration {
+    /// The prefix, without the colon. The empty string declares the default prefix.
+    prefix: string,
+    /// The namespace IRI the prefix expands to.
+    namespace: iri-reference,
+  }
+
+  /// A range of bytes in a document's encoded form, counting from zero. The range includes
+  /// `start` and excludes `end`. The host turns spans into lines and columns when it
+  /// reports a problem to a person.
+  record span {
+    /// The offset of the first byte in the range.
+    start: u64,
+    /// The offset of the first byte after the range.
+    end: u64,
+  }
+
+  /// One thing a document says, in the order the document says it.
+  ///
+  /// "Statement" here has the meaning it has in the Turtle grammar, where a statement is
+  /// either a directive, such as a prefix declaration, or triples. It does not mean an RDF
+  /// statement in the sense of RDF 1.2 Concepts, which is what a triple asserts.
+  ///
+  /// Order matters: a prefix or base declaration applies to the statements that follow it.
+  variant statement {
+    /// A triple in a dataset.
+    quad(quad),
+    /// A prefix declaration.
+    prefix(prefix-declaration),
+    /// A base declaration, which changes the base IRI for the statements that follow it. A
+    /// relative reference here is resolved against the base in effect before it.
+    base(iri-reference),
+    /// A version declaration, such as Turtle 1.2's `VERSION "1.2"`, giving the version of
+    /// the syntax the document claims to follow.
+    version(string),
+    /// Something in the document that the parser accepted but a person should know about,
+    /// such as JSON-LD keys that map to no IRI and are dropped. The string describes it in
+    /// English.
+    warning(string),
+  }
+
+  /// A statement, together with the part of the document it comes from.
+  record located-statement {
+    /// The bytes of the document the statement comes from. For a quad, this is the term
+    /// that completed it, so an error in the third object of `ex:s ex:p o1, o2, o3` points
+    /// at `o3`.
+    span: span,
+    /// The statement.
+    statement: statement,
+  }
+}

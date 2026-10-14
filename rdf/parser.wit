@@ -1,0 +1,79 @@
+// SPDX-FileCopyrightText: 2026 Omnifi Foundation
+// SPDX-License-Identifier: MPL-2.0
+
+/// Reading a document in one Resource Description Framework (RDF) syntax.
+///
+/// A parser knows its syntax and nothing more than the syntax requires. It reads bytes and
+/// writes the statements they make, in order and as written. For syntaxes in the Turtle
+/// family it leaves Internationalized Resource Identifier (IRI) resolution, prefix
+/// expansion, blank node identity and term checking to the host. A syntax that scopes its
+/// base or its prefixes by position in a tree, as JSON-LD and RDF/XML do, resolves those
+/// itself and writes absolute IRIs, because a flat sequence of declarations cannot express
+/// the scoping.
+interface parser {
+  use syntax.{syntax-description};
+  use terms.{located-statement, span};
+
+  /// The host's information about a document, given to a parser before it reads it.
+  record parse-options {
+    /// The IRI the document was retrieved from, or the base IRI the host chooses for it.
+    /// A parser that writes relative references may ignore it, because the host resolves
+    /// them against the same base. A parser that resolves IRIs itself uses it.
+    base: option<string>,
+    /// The media type the document arrived with, including any parameters, such as a
+    /// JSON-LD profile.
+    media-type: option<string>,
+  }
+
+  /// A part of the document that is not valid in the syntax.
+  record syntax-error {
+    /// A description of the fault, in English.
+    message: string,
+    /// The bytes at fault.
+    span: span,
+  }
+
+  /// The reason a parse ended before the end of the document.
+  variant parse-error {
+    /// The document is not valid in the syntax.
+    syntax(syntax-error),
+    /// The document uses a feature of the syntax that this parser does not implement. The
+    /// string names it in English.
+    unsupported(string),
+    /// Any other failure, with a description in English when the parser has one.
+    other(option<string>),
+  }
+
+  /// Describes the syntax this parser reads.
+  describe: func() -> syntax-description;
+
+  /// Reads the document arriving on `document`, and writes the statements it makes to the
+  /// returned stream.
+  ///
+  /// The document arrives as bytes in its own encoding; detecting the encoding is part of
+  /// the syntax. Statements are written as soon as they are complete. The returned future
+  /// resolves once the document has been read to its end, or with the first error, after
+  /// which no further statements are written. Statements written before an error stay
+  /// written, and the host decides whether to keep them.
+  ///
+  /// If the host drops the statement stream, the parser stops reading the document, and
+  /// the host need not read the future.
+  ///
+  /// The function is asynchronous because the parser returns its stream and future before
+  /// it has read the document, and goes on writing to them afterwards. Only an
+  /// asynchronous export has a task that outlives its return, in which that work can run.
+  parse: async func(
+    document: stream<u8>,
+    options: parse-options,
+  ) -> tuple<stream<located-statement>, future<result<_, parse-error>>>;
+}
+
+/// A component that reads one RDF syntax.
+///
+/// The world imports no functions. Its component still imports the `syntax` and `terms`
+/// interfaces, because the component model imports every interface whose types an export
+/// uses, but those interfaces declare types only, so there is nothing in them to call. The
+/// document and everything else the parser needs arrive as arguments.
+world parser-component {
+  export parser;
+}
